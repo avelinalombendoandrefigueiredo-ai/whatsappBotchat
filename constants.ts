@@ -5,7 +5,8 @@ export const INITIAL_SETTINGS: BotSettings = {
   systemInstruction: "Você é o assistente virtual da 'Minha Loja Tech'. Seu nome é 'ZapBot'. Você deve ser extremamente educado, humanizado e usar emojis. Seu objetivo é ajudar o cliente a navegar pelos menus ou tirar dúvidas sobre produtos. Se o cliente estiver frustrado, peça desculpas e ofereça o menu principal. Responda de forma curta, ideal para WhatsApp.",
   apiKey: "", 
   isActive: true,
-  blockedNumbers: [] // Inicialmente nenhum número bloqueado
+  blockedNumbers: [], // Inicialmente nenhum número bloqueado
+  backendUrl: "http://localhost:3000" // URL Padrão do Backend local
 };
 
 export const INITIAL_MENU: MenuItem[] = [

@@ -217,7 +217,7 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings, on
             
             contextInstruction += `\n\n[CONTEXTO DO MENU ATUAL]:\nO usuário está navegando em um menu numérico. As opções válidas AGORA são:\n${availableOptions}\n\nREGRAS:\n1. Se o usuário perguntar algo que parece ser uma das opções, peça gentilmente para ele digitar o NÚMERO correspondente (ex: "Para isso, digite 1").\n2. Não invente opções.\n3. Se ele estiver perdido, sugira digitar "Menu".`;
 
-            const aiResponse = await generateBotResponse(history, userText, contextInstruction, settings.apiKey);
+            const aiResponse = await generateBotResponse(history, userText, contextInstruction);
             
             sendBotMessage(aiResponse);
         } catch (e) {

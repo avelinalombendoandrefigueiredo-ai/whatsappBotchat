@@ -20,17 +20,15 @@ import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 export const generateBotResponse = async (
   history: { role: string; text: string }[],
   userMessage: string,
-  systemInstruction: string,
-  customApiKey?: string
+  systemInstruction: string
 ): Promise<string> => {
-  // Tenta pegar a chave do painel, depois do .env do Vite de forma segura
-  // @ts-ignore
-  const envKey = (import.meta.env && import.meta.env.VITE_API_KEY) ? import.meta.env.VITE_API_KEY : undefined;
-  const apiKey = customApiKey || envKey;
+  // Guideline: The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+  // Assume this variable is pre-configured, valid, and accessible.
+  const apiKey = process.env.API_KEY;
   
   if (!apiKey) {
-    console.warn("API Key não encontrada.");
-    return "⚠️ [CONFIGURAÇÃO NECESSÁRIA] Por favor, vá em 'Configurações' e cole sua API Key para ativar a IA.";
+    console.warn("API Key não encontrada em process.env.API_KEY.");
+    return "⚠️ [CONFIGURAÇÃO NECESSÁRIA] Por favor, configure a variável de ambiente API_KEY para ativar a IA.";
   }
 
   try {
@@ -51,6 +49,9 @@ export const generateBotResponse = async (
         systemInstruction: systemInstruction,
         temperature: 0.6, // Mais criativo que 0, mas ainda focado
         maxOutputTokens: 200, // Respostas concisas para WhatsApp
+        // Guideline: When maxOutputTokens is set, thinkingBudget must be set. 
+        // Disabling thinking (0) to ensure fast and concise responses within the token limit.
+        thinkingConfig: { thinkingBudget: 0 },
       },
       history: recentHistory
     });
@@ -61,9 +62,9 @@ export const generateBotResponse = async (
   } catch (error: any) {
     console.error("Erro na IA:", error);
     
-    // Mensagem de erro amigável se o usuário tentou usar chave DeepSeek/OpenAI no cliente Gemini
+    // Mensagem de erro amigável
     if (error.message && (error.message.includes('key') || error.message.includes('auth') || error.status === 400)) {
-       return "⚠️ Erro de Autenticação: A chave fornecida parece inválida para o provedor Google Gemini. Se você colou uma chave DeepSeek, lembre-se que este simulador web usa Gemini nativamente. Exporte o código para usar DeepSeek via Node.js.";
+       return "⚠️ Erro de Autenticação: Verifique se a API_KEY está configurada corretamente.";
     }
     
     return "Desculpe, estou com uma breve instabilidade na minha conexão inteligente. Por favor, use o menu numérico por enquanto.";

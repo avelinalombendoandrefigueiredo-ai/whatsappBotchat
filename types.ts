@@ -22,6 +22,7 @@ export interface BotSettings {
   apiKey: string;
   isActive: boolean;
   blockedNumbers: string[]; // Lista de números ignorados pelo bot
+  backendUrl: string; // URL do servidor backend (ex: http://localhost:3000)
 }
 
 export interface ChatMessage {

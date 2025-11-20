@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BotSettings } from '../types';
-import { Save, Terminal, ToggleLeft, ToggleRight, Key, AlertTriangle, Eye, EyeOff, ShieldOff, Plus, Trash2, UserX } from 'lucide-react';
+import { Save, Terminal, ToggleLeft, ToggleRight, Key, AlertTriangle, Eye, EyeOff, ShieldOff, Plus, Trash2, UserX, Network } from 'lucide-react';
 
 interface SettingsPanelProps {
   settings: BotSettings;
@@ -58,7 +58,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSave }
     <div className="max-w-4xl mx-auto pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Configurações do Bot</h2>
-        <div className="text-xs text-gray-400 font-mono">v1.2.0 Stable</div>
+        <div className="text-xs text-gray-400 font-mono">v1.3.0 Hybrid</div>
       </div>
       
       <div className="grid gap-6">
@@ -90,6 +90,28 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onSave }
                </button>
             </div>
           </div>
+        </div>
+
+        {/* Backend Connection Section */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+           <h3 className="text-lg font-semibold text-gray-700 mb-4 border-b pb-2 flex items-center gap-2">
+             <Network size={20} className="text-blue-600" />
+             Conexão com Servidor (Backend)
+           </h3>
+           
+           <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">URL do Backend</label>
+              <input
+                type="text"
+                value={localSettings.backendUrl || "http://localhost:3000"}
+                onChange={(e) => handleChange('backendUrl', e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500 font-mono text-sm"
+                placeholder="http://localhost:3000"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                  Endereço onde seu servidor Node.js está rodando. Usado para gerar QR Code real.
+              </p>
+           </div>
         </div>
 
         {/* Blocked Numbers Section */}
