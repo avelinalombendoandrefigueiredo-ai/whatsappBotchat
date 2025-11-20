@@ -10,6 +10,7 @@ interface MenuEditorProps {
 export const MenuEditor: React.FC<MenuEditorProps> = ({ menu, setMenu }) => {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [uploadMode, setUploadMode] = useState<Record<string, 'url' | 'upload' | 'drive'>>({});
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const toggleNode = (id: string) => {
     const newExpanded = new Set(expandedNodes);
@@ -96,7 +97,7 @@ export const MenuEditor: React.FC<MenuEditorProps> = ({ menu, setMenu }) => {
       setMenu(renumberRecursive(menu));
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, id: string, type: MediaType) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, id: string, type: MediaType) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
@@ -112,8 +113,26 @@ export const MenuEditor: React.FC<MenuEditorProps> = ({ menu, setMenu }) => {
           return;
       }
 
-      const objectUrl = URL.createObjectURL(file);
-      handleUpdate(id, 'content', objectUrl);
+      setIsProcessing(true);
+
+      // Tenta converter imagens pequenas (< 2MB) para Base64 para persistir no LocalStorage
+      if (type === MediaType.IMAGE && file.size < 2 * 1024 * 1024) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              handleUpdate(id, 'content', reader.result as string);
+              setIsProcessing(false);
+          };
+          reader.readAsDataURL(file);
+      } else {
+          // Arquivos grandes ou vídeos usam Blob URL (Temporário para a sessão)
+          const objectUrl = URL.createObjectURL(file);
+          handleUpdate(id, 'content', objectUrl);
+          setIsProcessing(false);
+          
+          if(type !== MediaType.IMAGE) {
+              alert("Nota: Vídeos e Áudios grandes são salvos temporariamente na memória. Se você recarregar a página, precisará selecioná-los novamente.");
+          }
+      }
   };
 
   const renderTree = (items: MenuItem[], level = 0) => {
@@ -276,7 +295,9 @@ export const MenuEditor: React.FC<MenuEditorProps> = ({ menu, setMenu }) => {
                                     <div className="bg-green-50 p-3 rounded-full mb-2">
                                         <UploadCloud className="text-green-600" size={24} />
                                     </div>
-                                    <p className="text-sm font-medium text-gray-700">Clique ou arraste para carregar</p>
+                                    <p className="text-sm font-medium text-gray-700">
+                                        {isProcessing ? 'Processando...' : 'Clique ou arraste para carregar'}
+                                    </p>
                                 </div>
                             </div>
                         )}

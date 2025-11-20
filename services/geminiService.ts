@@ -23,9 +23,9 @@ export const generateBotResponse = async (
   systemInstruction: string,
   customApiKey?: string
 ): Promise<string> => {
-  // Tenta pegar a chave do painel, depois do .env do Vite
+  // Tenta pegar a chave do painel, depois do .env do Vite de forma segura
   // @ts-ignore
-  const envKey = import.meta.env.VITE_API_KEY;
+  const envKey = (import.meta.env && import.meta.env.VITE_API_KEY) ? import.meta.env.VITE_API_KEY : undefined;
   const apiKey = customApiKey || envKey;
   
   if (!apiKey) {

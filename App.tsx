@@ -25,12 +25,15 @@ const App: React.FC = () => {
   });
 
   const [settings, setSettings] = useState<BotSettings>(() => {
+    // @ts-ignore - Verificação defensiva para evitar crash se import.meta.env for undefined
+    const envApiKey = (import.meta.env && import.meta.env.VITE_API_KEY) ? import.meta.env.VITE_API_KEY : '';
+    
     try {
-      const saved = localStorage.getItem('zapbot_settings'); // Corrigido key para ser específica
-      return saved ? { ...INITIAL_SETTINGS, ...JSON.parse(saved) } : { ...INITIAL_SETTINGS, apiKey: process.env.API_KEY || '' };
+      const saved = localStorage.getItem('zapbot_settings');
+      return saved ? { ...INITIAL_SETTINGS, ...JSON.parse(saved) } : { ...INITIAL_SETTINGS, apiKey: envApiKey };
     } catch (e) {
       console.error("Erro ao carregar configurações:", e);
-      return { ...INITIAL_SETTINGS, apiKey: process.env.API_KEY || '' };
+      return { ...INITIAL_SETTINGS, apiKey: envApiKey };
     }
   });
 
