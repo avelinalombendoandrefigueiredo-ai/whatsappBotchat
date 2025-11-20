@@ -4,8 +4,7 @@ import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
  * Serviço de Inteligência Artificial
  * 
  * NOTA SOBRE DEEPSEEK:
- * Este simulador frontend usa a biblioteca oficial do Google GenAI (@google/genai) porque ela é compatível
- * com o ambiente de execução WebContainer.
+ * Este simulador frontend usa a biblioteca oficial do Google GenAI (@google/genai).
  * 
  * Para usar DeepSeek no seu projeto final (Node.js):
  * 1. Instale a biblioteca 'openai' (DeepSeek é compatível com OpenAI SDK): npm install openai
@@ -24,8 +23,10 @@ export const generateBotResponse = async (
   systemInstruction: string,
   customApiKey?: string
 ): Promise<string> => {
-  // Usa a chave do painel de configurações ou a variável de ambiente como fallback
-  const apiKey = customApiKey || process.env.API_KEY;
+  // Tenta pegar a chave do painel, depois do .env do Vite
+  // @ts-ignore
+  const envKey = import.meta.env.VITE_API_KEY;
+  const apiKey = customApiKey || envKey;
   
   if (!apiKey) {
     console.warn("API Key não encontrada.");
