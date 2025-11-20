@@ -1,18 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Paperclip, MoreVertical, Phone, Search, Smile, ArrowLeft } from 'lucide-react';
+import { Send, Paperclip, MoreVertical, Phone, Search, Smile, ArrowLeft, Lock } from 'lucide-react';
 import { MenuItem, ChatMessage, MediaType, BotSettings } from '../types';
 import { generateBotResponse } from '../services/geminiService';
 
 interface ChatSimulatorProps {
   menu: MenuItem[];
   settings: BotSettings;
+  onActivity: (isNewConversation: boolean) => void;
+  isConnected: boolean;
 }
 
-export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings }) => {
+export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings, onActivity, isConnected }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [hasStarted, setHasStarted] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -20,17 +23,17 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings }) 
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
 
-  // Start conversation if empty
+  // Start conversation if empty and connected
   useEffect(() => {
-    if (messages.length === 0 && settings.isActive) {
+    if (messages.length === 0 && settings.isActive && isConnected) {
         setTimeout(() => {
             sendBotMessage(`Olá! Bem-vindo à *${settings.companyName}*! 👋\nComo posso ajudar você hoje?`, menu);
         }, 1000);
     }
-  }, [settings.isActive]);
+  }, [settings.isActive, settings.companyName, isConnected]);
 
-  // Helper to find parent of a node
-  const findParentId = (items: MenuItem[], targetId: string, currentParentId: string | null = null): string | null => {
+  // Helper to find parent of a node (Strict Type Version)
+  const findParentId = (items: MenuItem[], targetId: string, currentParentId: string | null = null): string | null | undefined => {
     for (const item of items) {
       if (item.id === targetId) return currentParentId;
       if (item.children.length > 0) {
@@ -72,11 +75,19 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings }) 
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
     setIsTyping(true);
+    
+    // Notify App about activity
+    if (!hasStarted) {
+        setHasStarted(true);
+        onActivity(true); // New Conversation
+    } else {
+        onActivity(false); // Just a new message
+    }
 
     // --- BOT LOGIC ---
 
     // 1. Check commands (Navigation)
-    if (userText.toLowerCase() === 'menu' || userText.toLowerCase() === 'sair') {
+    if (['menu', 'sair', 'inicio', 'início'].includes(userText.toLowerCase())) {
         setTimeout(() => {
             setActiveMenuId(null);
             sendBotMessage("Reiniciando atendimento! Veja nossas opções:", menu);
@@ -90,14 +101,15 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings }) 
                 sendBotMessage("Você já está no menu principal.", menu);
             } else {
                 const parentId = findParentId(menu, activeMenuId);
-                setActiveMenuId(parentId || null);
+                const nextId = parentId === undefined ? null : parentId;
                 
-                // Find the options for the parent level
+                setActiveMenuId(nextId);
+                
                 let parentOptions = menu;
-                if (parentId) {
+                if (nextId) {
                     const findNode = (items: MenuItem[]): MenuItem | null => {
                         for (const item of items) {
-                            if (item.id === parentId) return item;
+                            if (item.id === nextId) return item;
                             const found = findNode(item.children);
                             if (found) return found;
                         }
@@ -118,10 +130,8 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings }) 
     const matchedOption = currentOptions.find(opt => opt.trigger.toLowerCase() === userText.toLowerCase());
 
     if (matchedOption) {
-        // Simulate network delay
         await new Promise(r => setTimeout(r, 1000));
 
-        // Send the content of the selected option
         const responseMsg: ChatMessage = {
             id: Date.now().toString() + 'bot',
             role: 'model',
@@ -131,7 +141,6 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings }) 
             timestamp: new Date()
         };
 
-        // If it is TEXT type, use content as text.
         if (matchedOption.responseType === MediaType.TEXT) {
             responseMsg.text = matchedOption.content;
         }
@@ -139,26 +148,23 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings }) 
         setMessages(prev => [...prev, responseMsg]);
         setIsTyping(false);
 
-        // If this option has children (submenus), enter that level and show options
         if (matchedOption.children.length > 0) {
             setActiveMenuId(matchedOption.id);
             setTimeout(() => {
                 sendMenuOptions(matchedOption.children);
             }, 800);
         } 
-        // If no children, stay on current level or wait for next input
     } else {
-        // 3. AI Fallback (Humanized)
+        // 3. AI Fallback
         try {
             const history = messages.map(m => ({ role: m.role, text: m.text }));
             
-            // Add context about the menus to the AI
             let contextInstruction = settings.systemInstruction;
             const availableOptions = currentOptions.map(o => `${o.trigger} - ${o.title}`).join('\n');
             
-            contextInstruction += `\n\n[ESTADO ATUAL DO USUÁRIO]:\nO usuário está num menu com estas opções numéricas:\n${availableOptions}\n\nINSTRUÇÕES:\n1. Se o usuário tentar escolher uma opção, guie-o.\n2. Se perguntar algo fora do menu, responda como assistente da empresa.\n3. SEMPRE ofereça para digitar 'Voltar' ou 'Menu' se ele parecer perdido.`;
+            contextInstruction += `\n\n[ESTADO ATUAL]:\nOpções numéricas:\n${availableOptions}\n\nINSTRUÇÕES:\n1. Guie o usuário se ele tentar escolher algo.\n2. Responda dúvidas gerais.\n3. Ofereça 'Voltar' ou 'Menu' se necessário.`;
 
-            const aiResponse = await generateBotResponse(history, userText, contextInstruction);
+            const aiResponse = await generateBotResponse(history, userText, contextInstruction, settings.apiKey);
             
             sendBotMessage(aiResponse);
         } catch (e) {
@@ -197,17 +203,30 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings }) 
       }, 800);
   };
 
+  if (!isConnected) {
+      return (
+          <div className="flex items-center justify-center h-full bg-gray-100 p-6">
+              <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-md">
+                  <Lock className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">Simulador Bloqueado</h3>
+                  <p className="text-gray-500 mb-6">Você precisa conectar o WhatsApp (escanear o QR Code) para iniciar a simulação e coletar métricas reais.</p>
+                  <p className="text-xs text-gray-400">Vá até a aba <strong>Conexão QR</strong>.</p>
+              </div>
+          </div>
+      );
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)] bg-[#efe7dd] relative rounded-2xl overflow-hidden shadow-2xl border border-gray-300 max-w-md mx-auto md:max-w-2xl font-sans">
         {/* WhatsApp Header */}
         <div className="bg-[#008069] px-3 py-2 flex items-center justify-between text-white shadow-md z-10">
             <div className="flex items-center gap-3">
-                 <ArrowLeft className="md:hidden" size={24} />
+                 <ArrowLeft className="md:hidden cursor-pointer" size={24} onClick={() => {}} />
                 <div className="w-10 h-10 rounded-full bg-white/20 overflow-hidden flex items-center justify-center">
-                   <img src={`https://ui-avatars.com/api/?name=${settings.companyName.replace(' ', '+')}&background=25D366&color=fff&bold=true`} alt="Bot" className="w-full h-full object-cover" />
+                   <img src={`https://ui-avatars.com/api/?name=${settings.companyName.replace(/ /g, '+')}&background=25D366&color=fff&bold=true`} alt="Bot" className="w-full h-full object-cover" />
                 </div>
                 <div className="flex flex-col">
-                    <h3 className="font-semibold text-base leading-tight truncate max-w-[150px]">{settings.companyName}</h3>
+                    <h3 className="font-semibold text-base leading-tight truncate max-w-[150px] sm:max-w-[300px]">{settings.companyName}</h3>
                     <p className="text-xs text-green-100 opacity-90 truncate">
                         {isTyping ? 'digitando...' : 'online agora'}
                     </p>
@@ -236,21 +255,20 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings }) 
                         max-w-[85%] rounded-lg p-1 shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] text-sm relative
                         ${msg.role === 'user' ? 'bg-[#d9fdd3] rounded-tr-none' : 'bg-white rounded-tl-none'}
                     `}>
-                        {/* Media Rendering */}
                         {msg.mediaType && msg.mediaType !== MediaType.TEXT && msg.mediaUrl && (
-                            <div className="rounded-lg overflow-hidden mb-1 m-0.5">
+                            <div className="rounded-lg overflow-hidden mb-1 m-0.5 bg-black/5">
                                 {msg.mediaType === MediaType.IMAGE && (
-                                    <img src={msg.mediaUrl} alt="Mídia" className="w-full h-auto object-cover max-h-64" 
+                                    <img src={msg.mediaUrl} alt="Mídia" className="w-full h-auto object-cover max-h-64 min-w-[150px]" 
                                         onError={(e) => (e.currentTarget.src = 'https://placehold.co/400x300?text=Erro+na+Imagem')} />
                                 )}
                                 {msg.mediaType === MediaType.VIDEO && (
-                                     <video controls className="w-full max-h-64 bg-black">
+                                     <video controls className="w-full max-h-64 bg-black min-w-[200px]">
                                         <source src={msg.mediaUrl} />
                                         Vídeo indisponível
                                      </video>
                                 )}
                                 {msg.mediaType === MediaType.AUDIO && (
-                                    <div className="px-1 py-2 min-w-[220px] flex items-center justify-center bg-gray-50 rounded">
+                                    <div className="px-1 py-2 min-w-[220px] flex items-center justify-center bg-gray-50 rounded border border-gray-100">
                                         <audio controls className="h-8 w-full max-w-[240px]">
                                             <source src={msg.mediaUrl} />
                                         </audio>

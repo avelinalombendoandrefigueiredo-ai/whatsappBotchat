@@ -32,4 +32,12 @@ export interface ChatMessage {
   timestamp: Date;
 }
 
+export interface DashboardStats {
+  activeChats: number;
+  totalClients: number;
+  totalSessions24h: number;
+  totalMenuOptions: number;
+  isConnected: boolean;
+}
+
 export type ViewState = 'dashboard' | 'menus' | 'settings' | 'qrcode' | 'simulator';

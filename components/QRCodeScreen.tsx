@@ -1,17 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { Smartphone, RefreshCw, CheckCircle } from 'lucide-react';
 
-export const QRCodeScreen: React.FC = () => {
-  const [status, setStatus] = useState<'loading' | 'ready' | 'connected'>('loading');
+interface QRCodeScreenProps {
+    onConnect: () => void;
+    isConnected: boolean;
+}
+
+export const QRCodeScreen: React.FC<QRCodeScreenProps> = ({ onConnect, isConnected }) => {
+  const [status, setStatus] = useState<'loading' | 'ready' | 'connected'>(isConnected ? 'connected' : 'loading');
   
   useEffect(() => {
-    const timer1 = setTimeout(() => setStatus('ready'), 1500);
-    return () => clearTimeout(timer1);
-  }, []);
+    if (!isConnected) {
+        const timer1 = setTimeout(() => setStatus('ready'), 1500);
+        return () => clearTimeout(timer1);
+    }
+  }, [isConnected]);
 
   const handleSimulateScan = () => {
+      if (status !== 'ready') return;
+      
       setStatus('loading');
-      setTimeout(() => setStatus('connected'), 2000);
+      setTimeout(() => {
+          setStatus('connected');
+          onConnect();
+      }, 2000);
   };
 
   return (
@@ -19,7 +31,11 @@ export const QRCodeScreen: React.FC = () => {
       <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 max-w-2xl w-full text-center">
         
         <h2 className="text-3xl font-bold text-gray-800 mb-2">Conectar WhatsApp</h2>
-        <p className="text-gray-500 mb-8">Abra o WhatsApp no seu celular e escaneie o código abaixo</p>
+        <p className="text-gray-500 mb-8">
+            {status === 'connected' 
+                ? 'Seu bot está online e sincronizando dados!' 
+                : 'Abra o WhatsApp no seu celular e escaneie o código abaixo'}
+        </p>
 
         <div className="relative inline-block group cursor-pointer" onClick={handleSimulateScan}>
           <div className={`w-64 h-64 bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center mb-4 relative overflow-hidden transition-all ${status === 'ready' ? 'hover:border-green-500' : ''}`}>
@@ -27,7 +43,9 @@ export const QRCodeScreen: React.FC = () => {
             {status === 'loading' && (
               <div className="flex flex-col items-center animate-pulse">
                 <RefreshCw className="w-10 h-10 text-gray-400 animate-spin mb-2" />
-                <span className="text-sm text-gray-400">Gerando QR Code...</span>
+                <span className="text-sm text-gray-400">
+                    {isConnected ? 'Sincronizando...' : 'Gerando QR Code...'}
+                </span>
               </div>
             )}
 
@@ -54,24 +72,33 @@ export const QRCodeScreen: React.FC = () => {
           </div>
         </div>
 
-        <div className="space-y-4 text-left max-w-sm mx-auto">
-            <div className="flex items-center gap-3 text-gray-600">
-                <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm">1</span>
-                <span>Abra o WhatsApp no seu celular</span>
+        {status !== 'connected' && (
+            <div className="space-y-4 text-left max-w-sm mx-auto">
+                <div className="flex items-center gap-3 text-gray-600">
+                    <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm">1</span>
+                    <span>Abra o WhatsApp no seu celular</span>
+                </div>
+                <div className="flex items-center gap-3 text-gray-600">
+                    <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm">2</span>
+                    <span>Toque em Menu ou Configurações</span>
+                </div>
+                <div className="flex items-center gap-3 text-gray-600">
+                    <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm">3</span>
+                    <span>Selecione Aparelhos Conectados</span>
+                </div>
+                <div className="flex items-center gap-3 text-gray-600">
+                    <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm">4</span>
+                    <span>Aponte a câmera para esta tela</span>
+                </div>
             </div>
-            <div className="flex items-center gap-3 text-gray-600">
-                <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm">2</span>
-                <span>Toque em Menu ou Configurações</span>
-            </div>
-            <div className="flex items-center gap-3 text-gray-600">
-                <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm">3</span>
-                <span>Selecione Aparelhos Conectados</span>
-            </div>
-            <div className="flex items-center gap-3 text-gray-600">
-                <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center font-bold text-sm">4</span>
-                <span>Aponte a câmera para esta tela</span>
-            </div>
-        </div>
+        )}
+
+        {status === 'connected' && (
+             <div className="text-green-700 bg-green-50 p-4 rounded-lg border border-green-100">
+                 <p className="font-bold">Tudo pronto!</p>
+                 <p className="text-sm mt-1">O Dashboard já está recebendo dados em tempo real.</p>
+             </div>
+        )}
 
       </div>
     </div>

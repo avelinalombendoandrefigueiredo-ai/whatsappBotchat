@@ -21,14 +21,15 @@ import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 export const generateBotResponse = async (
   history: { role: string; text: string }[],
   userMessage: string,
-  systemInstruction: string
+  systemInstruction: string,
+  customApiKey?: string
 ): Promise<string> => {
-  // Chave de API vinda das variáveis de ambiente (Configurada no .env)
-  const apiKey = process.env.API_KEY;
+  // Usa a chave do painel de configurações ou a variável de ambiente como fallback
+  const apiKey = customApiKey || process.env.API_KEY;
   
   if (!apiKey) {
-    console.warn("API Key não encontrada. O bot funcionará em modo de demonstração limitado.");
-    return "⚠️ [MODO DEMONSTRAÇÃO] Configure a API_KEY no arquivo .env para ativar a inteligência real. Por enquanto, só consigo responder aos menus numéricos.";
+    console.warn("API Key não encontrada.");
+    return "⚠️ [CONFIGURAÇÃO NECESSÁRIA] Por favor, vá em 'Configurações' e cole sua API Key para ativar a IA.";
   }
 
   try {
@@ -56,8 +57,14 @@ export const generateBotResponse = async (
     const response: GenerateContentResponse = await chat.sendMessage({ message: userMessage });
     
     return response.text || "Desculpe, não entendi. Poderia reformular?";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro na IA:", error);
+    
+    // Mensagem de erro amigável se o usuário tentou usar chave DeepSeek/OpenAI no cliente Gemini
+    if (error.message && (error.message.includes('key') || error.message.includes('auth') || error.status === 400)) {
+       return "⚠️ Erro de Autenticação: A chave fornecida parece inválida para o provedor Google Gemini. Se você colou uma chave DeepSeek, lembre-se que este simulador web usa Gemini nativamente. Exporte o código para usar DeepSeek via Node.js.";
+    }
+    
     return "Desculpe, estou com uma breve instabilidade na minha conexão inteligente. Por favor, use o menu numérico por enquanto.";
   }
 };
