@@ -21,6 +21,7 @@ export interface BotSettings {
   systemInstruction: string;
   apiKey: string;
   isActive: boolean;
+  blockedNumbers: string[]; // Lista de números ignorados pelo bot
 }
 
 export interface ChatMessage {

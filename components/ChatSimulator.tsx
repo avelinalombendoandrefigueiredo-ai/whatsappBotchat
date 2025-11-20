@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Paperclip, MoreVertical, Phone, Search, Smile, ArrowLeft, Lock } from 'lucide-react';
+import { Send, Paperclip, MoreVertical, Phone, Search, Smile, ArrowLeft, Lock, ShieldAlert, ImageOff } from 'lucide-react';
 import { MenuItem, ChatMessage, MediaType, BotSettings } from '../types';
 import { generateBotResponse } from '../services/geminiService';
 
@@ -17,22 +17,42 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings, on
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
   
+  // Simulação de identidade
+  const [simulatedPhone, setSimulatedPhone] = useState('+5511999998888');
+  const [isBlockedUser, setIsBlockedUser] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Verifica se o número atual está bloqueado
+  useEffect(() => {
+      if (!settings.blockedNumbers) {
+          setIsBlockedUser(false);
+          return;
+      }
+      const blocked = settings.blockedNumbers.includes(simulatedPhone.trim());
+      setIsBlockedUser(blocked);
+      
+      // Se bloqueado, para qualquer digitação
+      if (blocked) setIsTyping(false);
+
+  }, [simulatedPhone, settings.blockedNumbers]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
 
-  // Start conversation if empty and connected
+  // Start conversation logic
   useEffect(() => {
-    if (messages.length === 0 && settings.isActive && isConnected) {
-        setTimeout(() => {
+    // Só envia boas vindas se NÃO for um usuário bloqueado e se estiver conectado
+    if (messages.length === 0 && settings.isActive && isConnected && !isBlockedUser) {
+        const timer = setTimeout(() => {
             sendBotMessage(`Olá! Bem-vindo à *${settings.companyName}*! 👋\nComo posso ajudar você hoje?`, menu);
         }, 1000);
+        return () => clearTimeout(timer);
     }
-  }, [settings.isActive, settings.companyName, isConnected]);
+  }, [settings.isActive, settings.companyName, isConnected, isBlockedUser, messages.length]); // Added messages.length dep
 
-  // Helper to find parent of a node (Strict Type Version)
+  // Helper to find parent of a node
   const findParentId = (items: MenuItem[], targetId: string, currentParentId: string | null = null): string | null | undefined => {
     for (const item of items) {
       if (item.id === targetId) return currentParentId;
@@ -74,20 +94,27 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings, on
 
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
-    setIsTyping(true);
     
-    // Notify App about activity
-    if (!hasStarted) {
-        setHasStarted(true);
-        onActivity(true); // New Conversation
-    } else {
-        onActivity(false); // Just a new message
+    // Se estiver bloqueado, registra atividade (mensagem chegou) mas NÃO responde
+    if (isBlockedUser) {
+        onActivity(true); 
+        return; // Sai da função aqui
     }
 
-    // --- BOT LOGIC ---
+    setIsTyping(true);
+    
+    if (!hasStarted) {
+        setHasStarted(true);
+        onActivity(true); // Nova conversa
+    } else {
+        onActivity(false); // Apenas nova mensagem na conversa
+    }
 
-    // 1. Check commands (Navigation)
-    if (['menu', 'sair', 'inicio', 'início'].includes(userText.toLowerCase())) {
+    // --- LÓGICA DO BOT ---
+
+    // 1. Comandos de Navegação
+    const cmd = userText.toLowerCase();
+    if (['menu', 'sair', 'inicio', 'início'].includes(cmd)) {
         setTimeout(() => {
             setActiveMenuId(null);
             sendBotMessage("Reiniciando atendimento! Veja nossas opções:", menu);
@@ -95,12 +122,13 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings, on
         return;
     }
 
-    if (userText.toLowerCase() === 'voltar') {
+    if (cmd === 'voltar') {
         setTimeout(() => {
             if (!activeMenuId) {
                 sendBotMessage("Você já está no menu principal.", menu);
             } else {
                 const parentId = findParentId(menu, activeMenuId);
+                // Se parentId for undefined, significa que estamos no topo ou erro. Se for null, é raiz.
                 const nextId = parentId === undefined ? null : parentId;
                 
                 setActiveMenuId(nextId);
@@ -119,15 +147,15 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings, on
                     if (node) parentOptions = node.children;
                 }
                 
-                sendBotMessage("Voltando...", parentOptions);
+                sendBotMessage("Menu anterior:", parentOptions);
             }
         }, 1000);
         return;
     }
 
-    // 2. Check Menu Match
+    // 2. Verifica Menu Numérico
     const currentOptions = getCurrentOptions();
-    const matchedOption = currentOptions.find(opt => opt.trigger.toLowerCase() === userText.toLowerCase());
+    const matchedOption = currentOptions.find(opt => opt.trigger.trim().toLowerCase() === userText.toLowerCase());
 
     if (matchedOption) {
         await new Promise(r => setTimeout(r, 1000));
@@ -141,6 +169,7 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings, on
             timestamp: new Date()
         };
 
+        // Se for texto, o conteúdo é a própria mensagem
         if (matchedOption.responseType === MediaType.TEXT) {
             responseMsg.text = matchedOption.content;
         }
@@ -148,6 +177,7 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings, on
         setMessages(prev => [...prev, responseMsg]);
         setIsTyping(false);
 
+        // Se tiver submenus, navega e mostra as opções
         if (matchedOption.children.length > 0) {
             setActiveMenuId(matchedOption.id);
             setTimeout(() => {
@@ -155,20 +185,21 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings, on
             }, 800);
         } 
     } else {
-        // 3. AI Fallback
+        // 3. IA Fallback (IA Humanizada)
         try {
             const history = messages.map(m => ({ role: m.role, text: m.text }));
             
             let contextInstruction = settings.systemInstruction;
             const availableOptions = currentOptions.map(o => `${o.trigger} - ${o.title}`).join('\n');
             
-            contextInstruction += `\n\n[ESTADO ATUAL]:\nOpções numéricas:\n${availableOptions}\n\nINSTRUÇÕES:\n1. Guie o usuário se ele tentar escolher algo.\n2. Responda dúvidas gerais.\n3. Ofereça 'Voltar' ou 'Menu' se necessário.`;
+            contextInstruction += `\n\n[ESTADO DO MENU ATUAL]:\nAs opções numéricas disponíveis AGORA para o usuário são:\n${availableOptions}\n\nINSTRUÇÕES OBRIGATÓRIAS:\n1. Se a mensagem do usuário parecer uma tentativa de escolher uma opção, guie ele para digitar o NÚMERO correto.\n2. Se for dúvida geral, responda educadamente.\n3. Sempre mantenha tom de WhatsApp.`;
 
             const aiResponse = await generateBotResponse(history, userText, contextInstruction, settings.apiKey);
             
             sendBotMessage(aiResponse);
         } catch (e) {
-            sendBotMessage("Desculpe, não consegui processar agora. Digite o número da opção desejada.");
+            console.error(e);
+            sendBotMessage("Desculpe, não consegui processar agora. Por favor, digite o número da opção desejada.");
         }
     }
   };
@@ -205,133 +236,169 @@ export const ChatSimulator: React.FC<ChatSimulatorProps> = ({ menu, settings, on
 
   if (!isConnected) {
       return (
-          <div className="flex items-center justify-center h-full bg-gray-100 p-6">
-              <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-md">
-                  <Lock className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <div className="flex items-center justify-center h-full bg-gray-100 p-6 animate-in fade-in">
+              <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-md border border-gray-200">
+                  <div className="bg-gray-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Lock className="w-10 h-10 text-gray-400" />
+                  </div>
                   <h3 className="text-xl font-bold text-gray-800 mb-2">Simulador Bloqueado</h3>
                   <p className="text-gray-500 mb-6">Você precisa conectar o WhatsApp (escanear o QR Code) para iniciar a simulação e coletar métricas reais.</p>
-                  <p className="text-xs text-gray-400">Vá até a aba <strong>Conexão QR</strong>.</p>
+                  <div className="p-3 bg-yellow-50 text-yellow-800 text-sm rounded border border-yellow-100">
+                     Vá até a aba <strong>Conexão QR</strong> no menu lateral.
+                  </div>
               </div>
           </div>
       );
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] bg-[#efe7dd] relative rounded-2xl overflow-hidden shadow-2xl border border-gray-300 max-w-md mx-auto md:max-w-2xl font-sans">
-        {/* WhatsApp Header */}
-        <div className="bg-[#008069] px-3 py-2 flex items-center justify-between text-white shadow-md z-10">
-            <div className="flex items-center gap-3">
-                 <ArrowLeft className="md:hidden cursor-pointer" size={24} onClick={() => {}} />
-                <div className="w-10 h-10 rounded-full bg-white/20 overflow-hidden flex items-center justify-center">
-                   <img src={`https://ui-avatars.com/api/?name=${settings.companyName.replace(/ /g, '+')}&background=25D366&color=fff&bold=true`} alt="Bot" className="w-full h-full object-cover" />
-                </div>
-                <div className="flex flex-col">
-                    <h3 className="font-semibold text-base leading-tight truncate max-w-[150px] sm:max-w-[300px]">{settings.companyName}</h3>
-                    <p className="text-xs text-green-100 opacity-90 truncate">
-                        {isTyping ? 'digitando...' : 'online agora'}
-                    </p>
-                </div>
+    <div className="h-full flex flex-col">
+        
+        {/* Dev Tool: Phone Number Simulator */}
+        <div className="bg-gray-800 text-white p-2 text-xs flex flex-wrap items-center justify-between gap-2 shadow-md relative z-30">
+            <div className="flex items-center gap-2">
+                <span className="opacity-60 font-semibold">TESTAR COMO:</span>
+                <input 
+                    type="text" 
+                    value={simulatedPhone}
+                    onChange={(e) => setSimulatedPhone(e.target.value)}
+                    className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white w-36 text-center font-mono focus:ring-1 focus:ring-green-500 outline-none"
+                />
             </div>
-            <div className="flex gap-4 text-white">
-                <Phone size={20} />
-                <Search size={20} />
-                <MoreVertical size={20} />
-            </div>
-        </div>
-
-        {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#e5ddd5] relative">
-             <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat"></div>
-             
-             <div className="flex justify-center mb-6 relative z-10">
-                <div className="bg-[#FFF5C4] text-gray-600 text-[11px] shadow-sm px-3 py-1 rounded-lg text-center max-w-[80%] leading-4">
-                    🔒 As mensagens são protegidas com criptografia de ponta-a-ponta.
+            {isBlockedUser ? (
+                <div className="flex items-center gap-1 text-red-300 font-bold bg-red-900/30 px-2 py-1 rounded animate-pulse">
+                    <ShieldAlert size={14} />
+                    BLOQUEADO (Não Responde)
                 </div>
-             </div>
-
-            {messages.map((msg) => (
-                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} relative z-10 group`}>
-                    <div className={`
-                        max-w-[85%] rounded-lg p-1 shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] text-sm relative
-                        ${msg.role === 'user' ? 'bg-[#d9fdd3] rounded-tr-none' : 'bg-white rounded-tl-none'}
-                    `}>
-                        {msg.mediaType && msg.mediaType !== MediaType.TEXT && msg.mediaUrl && (
-                            <div className="rounded-lg overflow-hidden mb-1 m-0.5 bg-black/5">
-                                {msg.mediaType === MediaType.IMAGE && (
-                                    <img src={msg.mediaUrl} alt="Mídia" className="w-full h-auto object-cover max-h-64 min-w-[150px]" 
-                                        onError={(e) => (e.currentTarget.src = 'https://placehold.co/400x300?text=Erro+na+Imagem')} />
-                                )}
-                                {msg.mediaType === MediaType.VIDEO && (
-                                     <video controls className="w-full max-h-64 bg-black min-w-[200px]">
-                                        <source src={msg.mediaUrl} />
-                                        Vídeo indisponível
-                                     </video>
-                                )}
-                                {msg.mediaType === MediaType.AUDIO && (
-                                    <div className="px-1 py-2 min-w-[220px] flex items-center justify-center bg-gray-50 rounded border border-gray-100">
-                                        <audio controls className="h-8 w-full max-w-[240px]">
-                                            <source src={msg.mediaUrl} />
-                                        </audio>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className={`px-2 pb-4 pt-1.5 whitespace-pre-wrap text-[#111b21] leading-relaxed text-[14.2px] ${msg.role === 'user' ? '' : 'mr-2'}`}>
-                            {msg.text}
-                        </div>
-                        
-                        <div className="absolute bottom-1 right-2 text-[10px] text-gray-500 flex items-center gap-0.5">
-                            {msg.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                            {msg.role === 'user' && <span className="text-[#53bdeb] ml-0.5">✓✓</span>}
-                        </div>
-                    </div>
-                </div>
-            ))}
-            
-            {isTyping && (
-                 <div className="flex justify-start relative z-10">
-                    <div className="bg-white rounded-xl rounded-tl-none px-4 py-3 shadow-sm border border-gray-100">
-                        <div className="flex gap-1.5">
-                            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></span>
-                            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-150"></span>
-                            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-300"></span>
-                        </div>
-                    </div>
+            ) : (
+                 <div className="flex items-center gap-1 text-green-400 font-bold px-2 py-1">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    ATIVO
                 </div>
             )}
-            <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area */}
-        <div className="bg-[#f0f2f5] px-2 py-2 flex items-end gap-2 z-20 select-none">
-            <div className="bg-white rounded-2xl flex-1 flex items-end p-2 shadow-sm border border-gray-100">
-                <button className="text-gray-400 p-1.5 hover:text-gray-600">
-                    <Smile size={24} />
-                </button>
-                <textarea
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={(e) => {
-                        if(e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendMessage();
-                        }
-                    }}
-                    placeholder="Mensagem"
-                    rows={1}
-                    className="w-full outline-none text-[15px] bg-transparent px-2 py-1.5 resize-none max-h-32 text-gray-800 placeholder:text-gray-500 scrollbar-hide"
-                />
-                <button className="text-gray-400 p-1.5 hover:text-gray-600 -rotate-45">
-                    <Paperclip size={22} />
+        <div className="flex flex-col flex-1 bg-[#efe7dd] relative rounded-b-2xl overflow-hidden shadow-2xl border border-gray-300 max-w-md mx-auto md:max-w-2xl font-sans w-full">
+            {/* WhatsApp Header */}
+            <div className="bg-[#008069] px-3 py-2 flex items-center justify-between text-white shadow-md z-10">
+                <div className="flex items-center gap-3">
+                    <ArrowLeft className="md:hidden cursor-pointer" size={24} />
+                    <div className="w-10 h-10 rounded-full bg-white/20 overflow-hidden flex items-center justify-center border border-white/10">
+                        <img src={`https://ui-avatars.com/api/?name=${settings.companyName.replace(/ /g, '+')}&background=25D366&color=fff&bold=true`} alt="Bot" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex flex-col justify-center">
+                        <h3 className="font-semibold text-base leading-tight truncate max-w-[150px] sm:max-w-[300px] text-shadow-sm">{settings.companyName}</h3>
+                        <p className="text-xs text-green-100 opacity-90 truncate min-h-[16px]">
+                            {isTyping ? 'digitando...' : 'online agora'}
+                        </p>
+                    </div>
+                </div>
+                <div className="flex gap-5 text-white">
+                    <Phone size={20} className="cursor-pointer opacity-90 hover:opacity-100" />
+                    <Search size={20} className="cursor-pointer opacity-90 hover:opacity-100" />
+                    <MoreVertical size={20} className="cursor-pointer opacity-90 hover:opacity-100" />
+                </div>
+            </div>
+
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#efe7dd] relative scrollbar-hide">
+                {/* Background Pattern */}
+                <div className="absolute inset-0 opacity-[0.06] pointer-events-none bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat z-0"></div>
+                
+                <div className="flex justify-center mb-6 relative z-10">
+                    <div className="bg-[#FFF5C4] text-gray-600 text-[11px] shadow-sm px-3 py-1.5 rounded-lg text-center max-w-[85%] leading-4 border border-[#ffeebb]">
+                        🔒 As mensagens são protegidas com criptografia de ponta-a-ponta.
+                    </div>
+                </div>
+
+                {messages.map((msg) => (
+                    <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} relative z-10 group`}>
+                        <div className={`
+                            max-w-[85%] rounded-lg p-1 shadow-sm text-sm relative
+                            ${msg.role === 'user' ? 'bg-[#d9fdd3] rounded-tr-none' : 'bg-white rounded-tl-none'}
+                        `}>
+                            {msg.mediaType && msg.mediaType !== MediaType.TEXT && msg.mediaUrl && (
+                                <div className="rounded-lg overflow-hidden mb-1 m-0.5 bg-black/5 relative min-h-[100px] flex items-center justify-center">
+                                    {msg.mediaType === MediaType.IMAGE && (
+                                        <img src={msg.mediaUrl} alt="Mídia" className="w-full h-auto object-cover max-h-64 min-w-[200px]" 
+                                            onError={(e) => {
+                                                e.currentTarget.style.display = 'none';
+                                                e.currentTarget.parentElement?.classList.add('bg-gray-200');
+                                                e.currentTarget.parentElement!.innerHTML = '<div class="p-4 text-center text-gray-500 text-xs flex flex-col items-center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M21 21l-2-2"></path><path d="M9 9l-2-2"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="11 3 14 6 11 9"></polyline><path d="M21 15l-5-5L5 21"></path></svg><span class="mt-1">Erro na Imagem</span></div>';
+                                            }} />
+                                    )}
+                                    {msg.mediaType === MediaType.VIDEO && (
+                                        <video controls className="w-full max-h-64 bg-black min-w-[240px] rounded">
+                                            <source src={msg.mediaUrl} />
+                                            Seu navegador não suporta o vídeo.
+                                        </video>
+                                    )}
+                                    {msg.mediaType === MediaType.AUDIO && (
+                                        <div className="px-2 py-3 min-w-[240px] flex items-center justify-center bg-gray-50 rounded border border-gray-100">
+                                            <audio controls className="h-8 w-full">
+                                                <source src={msg.mediaUrl} />
+                                            </audio>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className={`px-2 pb-4 pt-1.5 whitespace-pre-wrap text-[#111b21] leading-relaxed text-[14.2px] ${msg.role === 'user' ? '' : 'mr-6'}`}>
+                                {msg.text}
+                            </div>
+                            
+                            <div className="absolute bottom-1 right-2 text-[10px] text-gray-500 flex items-center gap-0.5 opacity-70">
+                                {msg.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                {msg.role === 'user' && <span className="text-[#53bdeb] ml-0.5 font-bold text-[11px]">✓✓</span>}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+                
+                {isTyping && (
+                    <div className="flex justify-start relative z-10">
+                        <div className="bg-white rounded-xl rounded-tl-none px-4 py-3 shadow-sm border border-gray-100 inline-block">
+                            <div className="flex gap-1.5">
+                                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></span>
+                                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-150"></span>
+                                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-300"></span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Area */}
+            <div className="bg-[#f0f2f5] px-2 py-2 flex items-end gap-2 z-20 select-none pb-4 md:pb-2">
+                <div className="bg-white rounded-2xl flex-1 flex items-end p-2 shadow-sm border border-gray-200 focus-within:border-green-500 transition-colors">
+                    <button className="text-gray-400 p-1.5 hover:text-gray-600 transition-colors">
+                        <Smile size={24} />
+                    </button>
+                    <textarea
+                        value={inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
+                        onKeyDown={(e) => {
+                            if(e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSendMessage();
+                            }
+                        }}
+                        placeholder={isBlockedUser ? "Modo manual (Bot pausado)" : "Mensagem"}
+                        rows={1}
+                        className="w-full outline-none text-[15px] bg-transparent px-2 py-1.5 resize-none max-h-32 text-gray-800 placeholder:text-gray-500 scrollbar-hide"
+                    />
+                    <button className="text-gray-400 p-1.5 hover:text-gray-600 -rotate-45 transition-colors">
+                        <Paperclip size={22} />
+                    </button>
+                </div>
+                <button 
+                    onClick={handleSendMessage}
+                    className={`p-3 rounded-full transition-all active:scale-95 shadow-sm flex items-center justify-center ${inputValue.trim() ? 'bg-[#008069] text-white hover:bg-[#006d59]' : 'bg-[#008069] text-white'}`}
+                >
+                    {inputValue.trim() ? <Send size={20} className="ml-0.5" /> : <div className="w-5 h-5 text-center leading-5 font-serif">🎤</div>}
                 </button>
             </div>
-            <button 
-                onClick={handleSendMessage}
-                className={`p-3 rounded-full transition-all active:scale-95 shadow-sm flex items-center justify-center ${inputValue.trim() ? 'bg-[#008069] text-white hover:bg-[#006d59]' : 'bg-[#008069] text-white'}`}
-            >
-                {inputValue.trim() ? <Send size={20} className="ml-0.5" /> : <div className="w-5 h-5 text-center leading-5">🎤</div>}
-            </button>
         </div>
     </div>
   );
